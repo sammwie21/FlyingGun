@@ -1,63 +1,78 @@
-import javax.imageio.ImageIO;
 import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
-
 
 public class Player {
-    int x, y;
-    int width = 30, height = 30;
-    double velocity = 0;
-    final double gravity = 1;
-    final double upwardForce = -2;
-    final double maxFallSpeed = 8;
-    private BufferedImage ufoImage;
+    private int x = 100;
+    private int y = GamePanel.HEIGHT / 2;
+    private int width = 60;
+    private int height = 40;
+    private double velocity = 0;
+    private final double gravity = 0.2;
+    private final double thrust = -0.3;
+    private boolean isThrusting = false;
 
-    public Player(int x, int y) {
-        this.x = x;
-        this.y = y;
-        this.width = 60;  // Adjust to fit your image
-        this.height = 40;
-
-        try {
-            ufoImage = ImageIO.read(new File("src\\ufo.png")); // adjust path if needed
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+    private final int MAX_AMMO = 15;
+    private int ammo = MAX_AMMO;
+    private long lastShootTime = 0;
+    private final int SHOOT_COOLDOWN = 500;
+    private boolean canShoot = true;
 
     public void update() {
-        velocity += gravity;
+        if (isThrusting) velocity += thrust;
+        else velocity += gravity;
 
-        // Clamp velocity to prevent it from getting too fast
-        if (velocity > maxFallSpeed) velocity = maxFallSpeed;
-        if (velocity < -maxFallSpeed) velocity = -maxFallSpeed;
+        velocity = Math.max(Math.min(velocity, 7), -7);
+        y += (int) velocity;
 
-        y += velocity;
-
-        if (y + height > 720 || y < 0) {
-            // Player hit top or bottom → trigger game over
+        if (y < 0 || y + height > GamePanel.HEIGHT) {
             GamePanel.gameOver = true;
         }
 
+        // Cooldown logic
+        if (!canShoot && System.currentTimeMillis() - lastShootTime > SHOOT_COOLDOWN) {
+            canShoot = true;
+        }
     }
 
-    public void glideUp() {
-        velocity += upwardForce;
+    public void draw(Graphics g) {
+        if (Images.ufoImage != null) {
+            g.drawImage(Images.ufoImage, x, y, width, height, null);
+        } else {
+            g.setColor(Color.CYAN);
+            g.fillOval(x, y, width, height);
+        }
     }
 
     public Rectangle getBounds() {
         return new Rectangle(x, y, width, height);
     }
 
-    public void draw(Graphics g) {
-        if (ufoImage != null) {
-            g.drawImage(ufoImage, x, y, width, height, null);
-        } else {
-            g.setColor(Color.CYAN);
-            g.fillOval(x, y, width, height); // fallback
-        }
+    public int getAmmo() {
+        return ammo;
     }
 
+    public void refillAmmo() {
+        ammo = MAX_AMMO;
+    }
+
+    public void setThrust(boolean thrusting) {
+        isThrusting = thrusting;
+    }
+
+    public Bullet shoot() {
+        if (canShoot && ammo > 0) {
+            canShoot = false;
+            lastShootTime = System.currentTimeMillis();
+            ammo--;
+            return new Bullet(x + width, y + height / 2);
+        }
+        return null;
+    }
+
+    public void reset() {
+        y = GamePanel.HEIGHT / 2;
+        velocity = 0;
+        ammo = MAX_AMMO;
+        isThrusting = false;
+        canShoot = true;
+    }
 }

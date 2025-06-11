@@ -1,159 +1,28 @@
+import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
-import java.util.*;
-import javax.imageio.ImageIO;
-import javax.swing.*;
-import javax.swing.Timer;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.Random;
 
 public class GamePanel extends JPanel implements ActionListener, KeyListener {
+    private SoundPlayer checkpointSound;
+    private SoundPlayer endingSound;
+    private ArrayList<Checkpoint> checkpoints = new ArrayList<>();
+    private int score = 0;
+    private int obstacleCounter = 0;
+    private Player player;
+    private ArrayList<Bullet> bullets = new ArrayList<>();
+    private ArrayList<Obstacle> obstacles = new ArrayList<>();
+    private ArrayList<Powerup> powerups = new ArrayList<>();
+    private SpikeManager spikeManager;
 
-    // Screen size constants
-    public static final int WIDTH = 800;
-    public static final int HEIGHT = 600;
+    public static final int WIDTH = 800, HEIGHT = 600;
+    public static boolean gameOver = false;
 
     private Timer timer;
-    private final int DELAY = 15; // ~60 FPS
+    private final int DELAY = 3;
 
-    // Player variables
-    private int playerX = 100;
-    private int playerY = HEIGHT / 2;
-    private int playerWidth = 60;
-    private int playerHeight = 40;
-    private double velocity = 0;
-    private final double gravity = 0.3;
-    private final double upwardForce = -0.6;
-
-    private BufferedImage ufoImage;
-
-    // Bullets
-    private class Bullet {
-        int x, y;
-        int width = 10, height = 5;
-        int speed = 10;
-
-        public Bullet(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-
-        void update() {
-            x += speed;
-        }
-
-        Rectangle getBounds() {
-            return new Rectangle(x, y, width, height);
-        }
-    }
-    private ArrayList<Bullet> bullets = new ArrayList<>();
-    private final int MAX_BULLETS = 15;
-    private boolean canShoot = true;
-    private long lastShootTime = 0;
-    private final int SHOOT_COOLDOWN = 500; // milliseconds
-
-    private BufferedImage bulletImage;
-
-    // Obstacles made of blocks stacked vertically
-    private class Obstacle {
-        int x;
-        int blockCount;
-        static final int BLOCK_SIZE = 32;
-        int y; // from bottom up
-        int hitCount = 0;
-        boolean destroyed = false;
-
-        Obstacle(int x, int blockCount) {
-            this.x = x;
-            this.blockCount = blockCount;
-            this.y = HEIGHT - blockCount * BLOCK_SIZE;
-        }
-
-        void update() {
-            x -= scrollSpeed;
-        }
-
-        void draw(Graphics g) {
-            for (int i = 0; i < blockCount; i++) {
-                g.drawImage(blockImage, x, y + i * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE, null);
-            }
-        }
-
-        Rectangle getBounds() {
-            return new Rectangle(x, y, BLOCK_SIZE, blockCount * BLOCK_SIZE);
-        }
-    }
-
-    private ArrayList<Obstacle> obstacles = new ArrayList<>();
-    private int scrollSpeed = 4;
-    private BufferedImage blockImage;
-
-    // Powerups for ammo refill
-    private class Powerup {
-        int x, y, size = 30;
-        boolean collected = false;
-
-        Powerup(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-
-        void update() {
-            x -= scrollSpeed;
-        }
-
-        void draw(Graphics g) {
-            g.setColor(Color.GREEN);
-            g.fillOval(x, y, size, size);
-        }
-
-        Rectangle getBounds() {
-            return new Rectangle(x, y, size, size);
-        }
-    }
-
-    private ArrayList<Powerup> powerups = new ArrayList<>();
-
-    // Spikes as small blocks stacked vertically on top and bottom edges
-    private class Spike {
-        int x, y;
-        static final int SIZE = 32;
-
-        Spike(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-
-        void update() {
-            x -= scrollSpeed;
-        }
-
-        void draw(Graphics g) {
-            if (blockImage != null) {
-                g.drawImage(blockImage, x, y, SIZE, SIZE, null);
-            } else {
-                g.setColor(Color.RED);
-                g.fillRect(x, y, SIZE, SIZE);
-            }
-        }
-
-        Rectangle getBounds() {
-            return new Rectangle(x, y, SIZE, SIZE);
-        }
-    }
-
-    private ArrayList<Spike> topSpikes = new ArrayList<>();
-    private ArrayList<Spike> bottomSpikes = new ArrayList<>();
-
-    // Game state
-    public static boolean gameOver = false;
-    private int ammo = MAX_BULLETS;
-
-    // Controls
-    private boolean spacePressed = false;
-
-    // Restart button
     private Rectangle restartButton = new Rectangle(WIDTH / 2 - 75, HEIGHT / 2 + 50, 150, 50);
 
     public GamePanel() {
@@ -161,22 +30,13 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         setBackground(Color.BLACK);
         setFocusable(true);
         addKeyListener(this);
+        checkpointSound = new SoundPlayer("src\\checkpoint.wav");
+        endingSound = new SoundPlayer("src\\ending.wav");
 
-        try {
-            ufoImage = ImageIO.read(new File("src\\ufo.png"));
-            blockImage = ImageIO.read(new File("src\\wall.png"));  // Use your block or spike image here
-            bulletImage = ImageIO.read(new File("src\\bullet.png"));
-            BufferedImage spikeImage = ImageIO.read(new File("src\\spike-down.png"));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        Images.loadImages();
 
-        // Initialize spikes covering entire top and bottom edges (a bit extra to the right)
-        int spikesNeeded = WIDTH / Spike.SIZE + 3; // +3 to cover offscreen area on right
-        for (int i = 0; i < spikesNeeded; i++) {
-            topSpikes.add(new Spike(i * Spike.SIZE, 0));              // top edge, y=0
-            bottomSpikes.add(new Spike(i * Spike.SIZE, HEIGHT - Spike.SIZE)); // bottom edge
-        }
+        player = new Player();
+        spikeManager = new SpikeManager();
 
         timer = new Timer(DELAY, this);
         timer.start();
@@ -185,63 +45,77 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     }
 
     private void spawnObstacle() {
-        int blocks = 3 + new Random().nextInt(4); // 3 to 6
-        int x = WIDTH + 50;
-        obstacles.add(new Obstacle(x, blocks));
+        Obstacle o = new Obstacle(WIDTH + 50);
+        obstacles.add(o);
+        obstacleCounter++;
 
-        // Random chance to spawn powerup roughly aligned with obstacle gap (just example)
-        if (new Random().nextDouble() < 0.3) {
-            int puY = HEIGHT - blocks * Obstacle.BLOCK_SIZE - 50;
-            powerups.add(new Powerup(x + 20, puY));
+        // Add checkpoint less frequently
+        if (obstacleCounter % 8 == 0) {
+            int attempts = 0;
+            while (attempts < 10) {
+                int radius = 40;
+                int cx = o.getX() + 100 + new Random().nextInt(100); // vary x
+                int cy = HEIGHT / 3 + new Random().nextInt(HEIGHT / 3); // vary y around middle
+
+                Checkpoint cp = new Checkpoint(cx, cy, radius);
+
+                boolean overlaps = false;
+                for (Obstacle ob : obstacles) {
+                    Rectangle obBounds = ob.getBounds();
+                    if (obBounds.intersects(cp.getBounds())) {
+                        overlaps = true;
+                        break;
+                    }
+                }
+
+                if (!overlaps) {
+                    checkpoints.add(cp);
+                    break;
+                }
+                attempts++;
+            }
+        }
+
+        // Optional: spawn powerup
+        if (Math.random() < 0.15) {
+            powerups.add(new Powerup(o.getX() + 20, o.getY() - 50));
         }
     }
+
+
+
 
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
+        player.draw(g);
+        for (Bullet b : bullets) b.draw(g);
+        for (Obstacle o : obstacles) o.draw(g);
+        spikeManager.draw(g);
 
-        // Draw player (UFO)
-        if (ufoImage != null) {
-            g.drawImage(ufoImage, playerX, playerY, playerWidth, playerHeight, null);
-        } else {
-            g.setColor(Color.CYAN);
-            g.fillOval(playerX, playerY, playerWidth, playerHeight);
-        }
-
-        // Draw bullets
-        for (Bullet b : bullets) {
-            if (bulletImage != null) {
-                g.drawImage(bulletImage, b.x, b.y, 32, 16, null);
-            } else {
-                g.setColor(Color.YELLOW);
-                g.fillRect(b.x, b.y, b.width, b.height);
-            }
-        }
-
-        // Draw obstacles (stacked blocks)
-        for (Obstacle o : obstacles) {
-            o.draw(g);
-        }
-
-        // Draw powerups
         for (Powerup p : powerups) {
             if (!p.collected) p.draw(g);
         }
 
-        // Draw spikes on top and bottom edges
-        for (Spike s : topSpikes) {
-            s.draw(g);
-        }
-        for (Spike s : bottomSpikes) {
-            s.draw(g);
+        // Draw checkpoints
+        for (Checkpoint cp : checkpoints) {
+            cp.draw(g);
         }
 
-        // Ammo display
+        for (Checkpoint cp : checkpoints) {
+            cp.draw(g);
+        }
+
         g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.BOLD, 18));
-        g.drawString("Ammo: " + ammo, 10, 25);
+        g.drawString("Score: " + score, 10, 50);
 
-        // Game over screen
+
+
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Arial", Font.BOLD, 18));
+        g.drawString("Ammo: " + player.getAmmo(), 10, 25);
+
         if (gameOver) {
             g.setColor(new Color(0, 0, 0, 170));
             g.fillRect(0, 0, WIDTH, HEIGHT);
@@ -249,246 +123,159 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             g.setColor(Color.RED);
             g.setFont(new Font("Arial", Font.BOLD, 48));
             String msg = "GAME OVER";
-            int msgWidth = g.getFontMetrics().stringWidth(msg);
-            g.drawString(msg, WIDTH / 2 - msgWidth / 2, HEIGHT / 2);
+            g.drawString(msg, WIDTH / 2 - g.getFontMetrics().stringWidth(msg) / 2, HEIGHT / 2);
 
-            // Draw restart button
             g.setColor(Color.GRAY);
             g.fillRect(restartButton.x, restartButton.y, restartButton.width, restartButton.height);
 
             g.setColor(Color.WHITE);
             g.setFont(new Font("Arial", Font.BOLD, 24));
             String btnText = "RESTART";
-            int btnWidth = g.getFontMetrics().stringWidth(btnText);
-            g.drawString(btnText, restartButton.x + (restartButton.width - btnWidth) / 2,
+            g.drawString(btnText, restartButton.x + (restartButton.width - g.getFontMetrics().stringWidth(btnText)) / 2,
                     restartButton.y + 32);
         }
+
+
     }
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        if (!gameOver) {
-            updateGame();
-        }
+        if (!gameOver) updateGame();
         repaint();
+
     }
 
     private void updateGame() {
-        // Update player velocity and position
-        if (spacePressed) {
-            velocity += upwardForce;
-        } else {
-            velocity += gravity;
-        }
-        // Limit velocity so it’s smooth
-        velocity = Math.max(Math.min(velocity, 7), -7);
+        player.update();
 
-        playerY += (int) velocity;
-
-        // Check screen bounds (top/bottom)
-        if (playerY < 0 || playerY + playerHeight > HEIGHT) {
-            gameOver = true;
-        }
-
-        // Update bullets
-        Iterator<Bullet> bulletIt = bullets.iterator();
-        while (bulletIt.hasNext()) {
-            Bullet b = bulletIt.next();
+        bullets.removeIf(b -> {
             b.update();
-            if (b.x > WIDTH) {
-                bulletIt.remove();
-            }
-        }
+            return b.x > WIDTH;
+        });
 
-        // Cooldown shoot timer
-        if (!canShoot && System.currentTimeMillis() - lastShootTime > SHOOT_COOLDOWN) {
-            canShoot = true;
-        }
-
-        // Update obstacles
-        Iterator<Obstacle> obsIt = obstacles.iterator();
-        while (obsIt.hasNext()) {
-            Obstacle o = obsIt.next();
+        for (Obstacle o : new ArrayList<>(obstacles)) {
             o.update();
-
-            // Remove offscreen
-            if (o.x + Obstacle.BLOCK_SIZE < 0 || o.destroyed) {
-                obsIt.remove();
-            }
-
-            // Check collision with player - GAME OVER
-            if (o.getBounds().intersects(new Rectangle(playerX, playerY, playerWidth, playerHeight))) {
+            if (o.isOffscreen() || o.destroyed) obstacles.remove(o);
+            if (!gameOver && player.getBounds().intersects(o.getBounds())) {
                 gameOver = true;
+                endingSound.play();
             }
         }
 
-        // Update powerups
-        Iterator<Powerup> puIt = powerups.iterator();
-        while (puIt.hasNext()) {
-            Powerup p = puIt.next();
+        for (Powerup p : new ArrayList<>(powerups)) {
             p.update();
-            if (p.collected || p.x + p.size < 0) {
-                puIt.remove();
-                continue;
-            }
-            if (p.getBounds().intersects(new Rectangle(playerX, playerY, playerWidth, playerHeight))) {
-                ammo = MAX_BULLETS;
+            if (p.collected || p.x + p.size < 0) powerups.remove(p);
+            if (p.getBounds().intersects(player.getBounds())) {
+                player.refillAmmo();
                 p.collected = true;
             }
         }
 
-        // Update spikes
-        updateSpikes();
+        Iterator<Checkpoint> it = checkpoints.iterator();
+        while (it.hasNext()) {
+            Checkpoint c = it.next();
+            c.update();
 
-        // Bullet hits obstacle
-        bulletIt = bullets.iterator();
-        while (bulletIt.hasNext()) {
-            Bullet b = bulletIt.next();
-            boolean bulletRemoved = false;
+            if (!c.passed && c.intersects(player.getBounds())) {
+                c.passed = true;
+                score++;
+                checkpointSound.play();// increase score
+                it.remove();    // remove checkpoint so it disappears
+            }
+
+            if (c.isOffscreen()) {
+                if (!c.passed) {
+                    endingSound.play();
+                    GamePanel.gameOver = true;  // player missed checkpoint — game over
+                }
+                it.remove();
+            }
+        }
+        if (!gameOver && spikeManager.checkCollision(player.getBounds())) {
+            gameOver = true;
+            endingSound.play();
+        }
+
+
+
+
+
+// Spawn new checkpoints regularly
+        if (checkpoints.isEmpty() || checkpoints.get(checkpoints.size() - 1).x < GamePanel.WIDTH - 300) {
+            int radius = 30;
+            int newX = GamePanel.WIDTH + 200;
+            int newY = 200 + new Random().nextInt(GamePanel.HEIGHT - 400);
+
+            checkpoints.add(new Checkpoint(newX, newY, radius));
+        }
+
+
+
+        spikeManager.update();
+        Rectangle playerBounds = player.getBounds();
+        for (Checkpoint c : checkpoints) {
+            if (!c.passed && c.intersects(playerBounds)) {
+                c.passed = true;
+                score++;
+            }
+        }
+
+        if (spikeManager.checkCollision(player.getBounds())) gameOver = true;
+
+        bullets.removeIf(bullet -> {
             for (Obstacle o : obstacles) {
-                if (b.getBounds().intersects(o.getBounds())) {
-                    o.hitCount++;
-                    bulletRemoved = true;
-                    if (o.hitCount >= 3) {
-                        o.destroyed = true;
-                    }
-                    break;
+                if (bullet.getBounds().intersects(o.getBounds())) {
+                    o.hit();
+                    return true;
                 }
             }
-            if (bulletRemoved) bulletIt.remove();
-        }
+            return false;
+        });
 
-        // Spawn new obstacles randomly
-        if (obstacles.isEmpty() || obstacles.get(obstacles.size() - 1).x < WIDTH - 200) {
+        if (obstacles.isEmpty() || obstacles.get(obstacles.size() - 1).getX() < WIDTH - 200)
             spawnObstacle();
-        }
-    }
-
-    private void updateSpikes() {
-        // Move spikes left
-        for (Spike s : topSpikes) {
-            s.update();
-        }
-        for (Spike s : bottomSpikes) {
-            s.update();
-        }
-
-        // Remove spikes that have moved off left side and add new ones to right side to maintain coverage
-        int spikesNeeded = WIDTH / Spike.SIZE + 3;
-
-        // Top spikes
-        Iterator<Spike> topIt = topSpikes.iterator();
-        while (topIt.hasNext()) {
-            Spike s = topIt.next();
-            if (s.x + Spike.SIZE < 0) {
-                topIt.remove();
-            }
-        }
-        // Add new spikes on right if needed
-        while (topSpikes.size() < spikesNeeded) {
-            int maxX = topSpikes.isEmpty() ? 0 : topSpikes.get(topSpikes.size() - 1).x;
-            topSpikes.add(new Spike(maxX + Spike.SIZE, 0));
-        }
-
-        // Bottom spikes
-        Iterator<Spike> botIt = bottomSpikes.iterator();
-        while (botIt.hasNext()) {
-            Spike s = botIt.next();
-            if (s.x + Spike.SIZE < 0) {
-                botIt.remove();
-            }
-        }
-        // Add new spikes on right if needed
-        while (bottomSpikes.size() < spikesNeeded) {
-            int maxX = bottomSpikes.isEmpty() ? 0 : bottomSpikes.get(bottomSpikes.size() - 1).x;
-            bottomSpikes.add(new Spike(maxX + Spike.SIZE, HEIGHT - Spike.SIZE));
-        }
-
-        // Check collision of spikes with player — GAME OVER
-        Rectangle playerRect = new Rectangle(playerX, playerY, playerWidth, playerHeight);
-        for (Spike s : topSpikes) {
-            if (s.getBounds().intersects(playerRect)) {
-                gameOver = true;
-                break;
-            }
-        }
-        for (Spike s : bottomSpikes) {
-            if (s.getBounds().intersects(playerRect)) {
-                gameOver = true;
-                break;
-            }
-        }
-    }
-
-    // KeyListener methods
-    @Override
-    public void keyPressed(KeyEvent e) {
-        if (!gameOver) {
-            if (e.getKeyCode() == KeyEvent.VK_SPACE) {
-                spacePressed = true;
-            } else if (e.getKeyCode() == KeyEvent.VK_CONTROL) {
-                shoot();
-            }
-        } else {
-            if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                restartGame();
-            }
-        }
-    }
-
-    private void shoot() {
-        if (canShoot && ammo > 0) {
-            bullets.add(new Bullet(playerX + playerWidth, playerY + playerHeight / 2));
-            ammo--;
-            canShoot = false;
-            lastShootTime = System.currentTimeMillis();
-        }
     }
 
     private void restartGame() {
-        playerY = HEIGHT / 2;
-        velocity = 0;
+        player.reset();
         bullets.clear();
         obstacles.clear();
         powerups.clear();
-        ammo = MAX_BULLETS;
+        spikeManager.reset();
         gameOver = false;
-        spacePressed = false;
+        checkpoints.clear();
+        score = 0;
         spawnObstacle();
+    }
 
-        // Reset spikes
-        topSpikes.clear();
-        bottomSpikes.clear();
-        int spikesNeeded = WIDTH / Spike.SIZE + 3;
-        for (int i = 0; i < spikesNeeded; i++) {
-            topSpikes.add(new Spike(i * Spike.SIZE, 0));
-            bottomSpikes.add(new Spike(i * Spike.SIZE, HEIGHT - Spike.SIZE));
+    @Override
+    public void keyPressed(KeyEvent e) {
+        if (!gameOver) {
+            if (e.getKeyCode() == KeyEvent.VK_SPACE) player.setThrust(true);
+            else if (e.getKeyCode() == KeyEvent.VK_CONTROL) {
+                Bullet b = player.shoot();
+                if (b != null) bullets.add(b);
+            }
+        } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+            restartGame();
         }
     }
 
     @Override
     public void keyReleased(KeyEvent e) {
-        if (e.getKeyCode() == KeyEvent.VK_SPACE) {
-            spacePressed = false;
-        }
+        if (e.getKeyCode() == KeyEvent.VK_SPACE) player.setThrust(false);
     }
 
     @Override
     public void keyTyped(KeyEvent e) {}
 
-    // Mouse listener for restart button click
     @Override
     protected void processMouseEvent(MouseEvent e) {
-        if (gameOver && e.getID() == MouseEvent.MOUSE_CLICKED) {
-            Point p = e.getPoint();
-            if (restartButton.contains(p)) {
-                restartGame();
-            }
-        }
+        if (gameOver && e.getID() == MouseEvent.MOUSE_CLICKED && restartButton.contains(e.getPoint()))
+            restartGame();
         super.processMouseEvent(e);
     }
 
-    // Enable mouse events to detect clicks
     @Override
     public void addNotify() {
         super.addNotify();

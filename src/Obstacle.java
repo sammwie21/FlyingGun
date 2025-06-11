@@ -1,50 +1,54 @@
-import javax.imageio.ImageIO;
 import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
+import java.util.Random;
 
 public class Obstacle {
-    public int x, y;
-    public int blockCount; // how many blocks tall (3 to 6)
-    public static final int BLOCK_SIZE = 32; // adjust to your image height
+    public int x;
+    public int y;
+    private int width = 32;
+    private int blockCount;
     public boolean destroyed = false;
-    public int hitCount = 0;
+    private int hitCount = 0;
 
-    private static BufferedImage blockImage;
-
-    static {
-        try {
-            blockImage = ImageIO.read(new File("src\\wall.png"));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    public Obstacle(int xStart) {
+        this.x = xStart;
+        blockCount = 3 + new Random().nextInt(6);
+        int totalHeight = blockCount * width;
+        y = (GamePanel.HEIGHT / 2) - (totalHeight / 2);
     }
 
-    public Obstacle(int x, int blockCount) {
-        this.x = x;
-        this.blockCount = blockCount;
-        this.y = 0; // top-aligned (adjust later for bottom-aligned if needed)
-    }
 
-    public void update(int scrollSpeed) {
-        x -= scrollSpeed;
+    public void update() {
+        x -= 4;
     }
 
     public void draw(Graphics g) {
         for (int i = 0; i < blockCount; i++) {
-            g.drawImage(blockImage, x, y + i * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE, null);
+            g.drawImage(Images.blockImage, x, y + i * width, width, width, null);
         }
     }
 
     public Rectangle getBounds() {
-        return new Rectangle(x, y, BLOCK_SIZE, blockCount * BLOCK_SIZE);
+        return new Rectangle(x, y, width, blockCount * width);
     }
 
-    public void takeHit() {
+    public boolean isOffscreen() {
+        return x + width < 0;
+    }
+
+    public void hit() {
         hitCount++;
-        if (hitCount >= 3) {
-            destroyed = true;
-        }
+        if (hitCount >= 1) destroyed = true;
+    }
+
+    public int getX() {
+        return x;
+    }
+
+    public int getY() {
+        return y;
+    }
+
+    public boolean isDestroyed() {
+        return destroyed;
     }
 }
