@@ -179,14 +179,14 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             if (!c.passed && c.intersects(player.getBounds())) {
                 c.passed = true;
                 score++;
-                checkpointSound.play();// increase score
-                it.remove();    // remove checkpoint so it disappears
+                checkpointSound.play();
+                it.remove();
             }
 
             if (c.isOffscreen()) {
                 if (!c.passed) {
                     endingSound.play();
-                    GamePanel.gameOver = true;  // player missed checkpoint — game over
+                    GamePanel.gameOver = true;
                 }
                 it.remove();
             }
@@ -202,7 +202,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
 // Spawn new checkpoints regularly
         if (checkpoints.isEmpty() || checkpoints.get(checkpoints.size() - 1).x < GamePanel.WIDTH - 300) {
-            int radius = 30;
+            int radius = 40;
             int newX = GamePanel.WIDTH + 200;
             int newY = 200 + new Random().nextInt(GamePanel.HEIGHT - 400);
 

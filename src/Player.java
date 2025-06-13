@@ -6,7 +6,7 @@ public class Player {
     private int width = 60;
     private int height = 40;
     private double velocity = 0;
-    private final double gravity = 0.2;
+    private final double gravity = 0.25;
     private final double thrust = -0.3;
     private boolean isThrusting = false;
 
